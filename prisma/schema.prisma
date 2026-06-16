@@ -1,0 +1,247 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  HR_ADMIN
+  EMPLOYEE
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  email    String @unique @db.VarChar(100)
+  username String @db.VarChar(100)
+  password String @db.VarChar(200)
+  role     Role   @default(EMPLOYEE)
+
+  employee Employee?
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Department {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique @db.VarChar(100)
+  positions Position[]
+  employees Employee[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("departments")
+}
+
+model Position {
+  id           Int        @id @default(autoincrement())
+  name         String     @unique @db.VarChar(100)
+  departmentId Int
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  employees    Employee[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("positions")
+}
+
+model Employee {
+  id     Int  @id @default(autoincrement())
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  phone   String? @db.VarChar(20) 
+  address String? @db.Text
+
+  nik          String     @unique @db.VarChar(100)
+  departmentId Int
+  department   Department @relation(fields: [departmentId], references: [id])
+  positionId   Int
+  position     Position   @relation(fields: [positionId], references: [id])
+
+  basicSalary Decimal @db.Decimal(10, 2)
+  taxStatus   String  @db.VarChar(100)
+  status      String  @default("ACTIVE") @db.VarChar(100)
+
+  overtimes Overtime[]
+  payslips  Payslip[]
+  leaves Leave[]
+  leaveRequests LeaveRequest[]
+
+  joinDate  DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("employees")
+}
+
+enum OvertimeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DayType {
+  WEEKDAY
+  WEEKEND
+}
+
+model Overtime {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  date       DateTime       @db.Date
+  startTime  String         @db.VarChar(5)
+  endTime    String         @db.VarChar(5)
+  totalHours Decimal        @db.Decimal(4, 2)
+  dayType    DayType        @default(WEEKDAY)
+  reason     String         @db.VarChar(255)
+  status     OvertimeStatus @default(PENDING)
+
+  overtimePay Decimal? @db.Decimal(10, 2)
+  payrollId   Int?
+  payroll     Payroll? @relation(fields: [payrollId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("overtimes")
+}
+
+enum PayrollStatus {
+  PROCESSED
+  CANCELLED
+}
+
+model Payroll {
+  id          Int           @id @default(autoincrement())
+  period      String        @unique @db.VarChar(7)
+  startPeriod DateTime      @db.Date
+  endPeriod   DateTime      @db.Date
+  status      PayrollStatus @default(PROCESSED)
+  processedBy Int
+  processedAt DateTime      @default(now())
+
+  payslips  Payslip[]
+  overtimes Overtime[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payrolls")
+}
+
+model Payslip {
+  id         Int      @id @default(autoincrement())
+  payrollId  Int
+  payroll    Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  // ========== PENDAPATAN ==========
+  basicSalary Decimal @db.Decimal(10, 2)
+  overtimePay Decimal @default(0) @db.Decimal(10, 2)
+
+  // ========== POTONGAN KARYAWAN ==========
+  bpjsKesehatan Decimal @db.Decimal(10, 2)
+  bpjsKerja     Decimal @db.Decimal(10, 2)
+  jht           Decimal @default(0) @db.Decimal(10, 2)
+  pph21         Decimal @db.Decimal(10, 2)
+
+  // ========== KONTRIBUSI PERUSAHAAN ==========
+  companyBpjsKesehatan     Decimal @default(0) @db.Decimal(10, 2)
+  companyBpjsKerja         Decimal @default(0) @db.Decimal(10, 2)
+  companyJht               Decimal @default(0) @db.Decimal(10, 2)
+  totalCompanyContribution Decimal @default(0) @db.Decimal(10, 2)
+
+  // ========== TOTAL ==========
+  totalEarnings   Decimal @db.Decimal(10, 2)
+  totalDeductions Decimal @db.Decimal(10, 2)
+  netSalary       Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([payrollId, employeeId])
+  @@map("payslips")
+}
+
+model Leave {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  totalDays    Int @default(12)
+  usedDays     Int @default(0)
+  remainingDays Int @default(12)
+  
+  year         Int
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([employeeId, year])
+  @@map("leaves")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int   
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("info") // info, success, payroll, warning
+  isRead    Boolean  @default(false)
+  link      String?  // optional link ke halaman terkait
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LeaveType {
+  TAHUNAN
+  SAKIT
+  MELAHIRKAN
+  PENTING
+}
+
+model LeaveRequest {
+  id           Int         @id @default(autoincrement())
+  employeeId   Int
+  employee     Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type         LeaveType
+  startDate    DateTime    @db.Date
+  endDate      DateTime    @db.Date
+  totalDays    Int
+  reason       String      @db.VarChar(255)
+  status       LeaveStatus @default(PENDING)
+  rejectedNote String?     @db.VarChar(255)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@map("leave_requests")
+}
